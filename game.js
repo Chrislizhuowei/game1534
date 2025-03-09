@@ -10,6 +10,8 @@ let gameStarted = false;
 let score = 0;
 let frameCount = 0;
 let moveSpeed;
+let coinCount = 0; // 统一使用 coinCount 作为金币计数
+let coins = 0; // 金币数量
 
 // 跳跃相关变量
 let jumpForce = 0;
@@ -20,7 +22,7 @@ let isFirstJump = false;
 // 游戏对象数组
 let grounds = [];
 let obstacles = [];
-let coins = [];
+let coinObjects = []; // 改名为 coinObjects 以避免冲突
 
 // 位置追踪变量
 let lastGroundZ = 0;
@@ -29,7 +31,6 @@ let lastCoinZ = -15;
 let lastBuildingZ = -50;
 
 // 计数器
-let coinCount = 0;
 let armSwingAngle = 0;
 
 // 共享几何体和材质
@@ -649,7 +650,7 @@ function createCoin(xOffset, zPos) {
     coin.castShadow = true;
     
     scene.add(coin);
-    coins.push(coin);
+    coinObjects.push(coin);
     
     coin.userData.rotationSpeed = 0.02;
 }
@@ -673,7 +674,7 @@ function createCoins() {
         console.log('金币创建成功');
     } catch (error) {
         console.error('创建金币失败:', error);
-        coins = []; // 如果创建失败，清空金币数组
+        coinObjects = []; // 如果创建失败，清空金币数组
     }
 }
 
@@ -683,18 +684,18 @@ function updateCoins() {
     const cameraZ = camera.position.z;
     
     // 移除远处的金币
-    for (let i = coins.length - 1; i >= 0; i--) {
-        const coin = coins[i];
+    for (let i = coinObjects.length - 1; i >= 0; i--) {
+        const coin = coinObjects[i];
         if (coin.position.z > cameraZ + cleanupDistance) {
             scene.remove(coin);
-            coins.splice(i, 1);
+            coinObjects.splice(i, 1);
         } else {
             coin.rotation.y += coin.userData.rotationSpeed;
         }
     }
     
     // 生成新的金币
-    while (lastCoinZ > cameraZ - visibilityDistance && coins.length < maxCoins) {
+    while (lastCoinZ > cameraZ - visibilityDistance && coinObjects.length < maxCoins) {
         const xOffset = Math.random() * 3 - 1.5;
         createCoin(xOffset, lastCoinZ);
         lastCoinZ -= (coinSpacing + Math.random() * 2);
@@ -706,13 +707,13 @@ function checkCoinCollection() {
     const playerPos = camera.position.clone();
     playerPos.y -= 0.5;
     
-    for (let i = coins.length - 1; i >= 0; i--) {
-        const coin = coins[i];
+    for (let i = coinObjects.length - 1; i >= 0; i--) {
+        const coin = coinObjects[i];
         const distance = playerPos.distanceTo(coin.position);
         
         if (distance < 1) {
             collectCoin(coin);
-            coins.splice(i, 1);
+            coinObjects.splice(i, 1);
         }
     }
 }
@@ -721,9 +722,11 @@ function checkCoinCollection() {
 function collectCoin(coin) {
     scene.remove(coin);
     coinCount += 10;
+    score += 10; // 增加分数
     
     // 更新UI显示
     updateCoinDisplay();
+    updateScoreDisplay();
     
     // 播放收集音效（可选）
     // playCoinSound();
@@ -735,18 +738,34 @@ function updateCoinDisplay() {
     if (coinDisplay) {
         coinDisplay.textContent = `金币: ${coinCount}`;
     }
-    
-    const shopCoins = document.getElementById('shopCoins');
-    if (shopCoins) {
-        shopCoins.textContent = `金币: ${coinCount}`;
+}
+
+// 更新分数显示
+function updateScoreDisplay() {
+    const scoreDisplay = document.getElementById('scoreDisplay');
+    if (!scoreDisplay) {
+        const display = document.createElement('div');
+        display.id = 'scoreDisplay';
+        display.style.position = 'fixed';
+        display.style.top = '50px';
+        display.style.right = '20px';
+        display.style.background = 'rgba(0,0,0,0.7)';
+        display.style.padding = '10px 20px';
+        display.style.borderRadius = '20px';
+        display.style.color = '#ffffff';
+        display.style.fontSize = '18px';
+        display.style.fontWeight = 'bold';
+        display.style.zIndex = '100';
+        document.body.appendChild(display);
     }
+    document.getElementById('scoreDisplay').textContent = `分数: ${score}`;
 }
 
 // 重置金币函数
 function resetCoins() {
     // 清除现有金币
-    coins.forEach(coin => scene.remove(coin));
-    coins = [];
+    coinObjects.forEach(coin => scene.remove(coin));
+    coinObjects = [];
     coinCount = 0;
     lastCoinZ = -15;
     
@@ -766,12 +785,12 @@ function resetGame() {
     // 清除现有的游戏元素
     grounds.forEach(ground => scene.remove(ground));
     obstacles.forEach(obstacle => scene.remove(obstacle));
-    coins.forEach(coin => scene.remove(coin));
+    coinObjects.forEach(coin => scene.remove(coin));
     
     // 重置数组和位置
     grounds = [];
     obstacles = [];
-    coins = [];
+    coinObjects = [];
     lastGroundZ = 0;
     lastObstacleZ = -30;
     lastCoinZ = -15;
@@ -1446,7 +1465,7 @@ document.head.insertAdjacentHTML('beforeend', `
 
 // 修改商城UI样式和创建方式
 function createShopUI() {
-    // 添加样式到head
+    // 添加商店样式
     const style = document.createElement('style');
     style.textContent = `
         #shop {
@@ -1469,14 +1488,6 @@ function createShopUI() {
             text-align: center;
             color: #fff;
             font-size: 24px;
-        }
-        #shopCoins {
-            background: rgba(255,215,0,0.2);
-            padding: 10px;
-            border-radius: 8px;
-            text-align: center;
-            font-size: 18px;
-            margin-bottom: 20px;
         }
         .skin-item {
             display: flex;
@@ -1517,132 +1528,104 @@ function createShopUI() {
             cursor: pointer;
             font-size: 16px;
         }
-        #closeShop:hover {
-            background: #da190b;
-        }
-        .coin-display {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.7);
-            padding: 10px 20px;
-            border-radius: 20px;
-            color: #ffd700;
-            font-size: 18px;
-            font-weight: bold;
-            z-index: 100;
-        }
     `;
     document.head.appendChild(style);
 
-    // 创建金币显示
-    const coinDisplay = document.createElement('div');
-    coinDisplay.className = 'coin-display';
-    coinDisplay.id = 'coinDisplay';
-    coinDisplay.textContent = `金币: ${coins}`;
-    document.body.appendChild(coinDisplay);
-
-    // 创建商城容器
+    // 创建商店容器
     const shopContainer = document.createElement('div');
     shopContainer.id = 'shop';
+    
+    // 创建商店内容
+    shopContainer.innerHTML = `
+        <h2>商店</h2>
+        <div id="shopCoins">金币: ${coinCount}</div>
+        <div id="skinList"></div>
+        <button id="closeShop">关闭</button>
+    `;
+    
+    document.body.appendChild(shopContainer);
+    
+    // 更新商店中的皮肤列表
+    updateShopItems();
+    
+    // 添加关闭按钮事件
+    document.getElementById('closeShop').onclick = toggleShop;
+}
 
-    // 创建标题
-    const title = document.createElement('h2');
-    title.textContent = '商城';
-    shopContainer.appendChild(title);
-
-    // 创建金币显示
-    const shopCoins = document.createElement('div');
-    shopCoins.id = 'shopCoins';
-    shopCoins.textContent = `金币: ${coins}`;
-    shopContainer.appendChild(shopCoins);
-
-    // 创建皮肤列表
-    const skinList = document.createElement('div');
-    skinList.id = 'skinList';
-
-    for (const [id, skin] of Object.entries(shopItems.skins)) {
-        const skinItem = document.createElement('div');
-        skinItem.className = 'skin-item';
-
-        const skinInfo = document.createElement('div');
-        skinInfo.textContent = skin.name;
-
+// 更新商店物品
+function updateShopItems() {
+    const skinList = document.getElementById('skinList');
+    if (!skinList) return;
+    
+    skinList.innerHTML = '';
+    
+    // 添加商店物品
+    const shopItems = {
+        default: {
+            name: '默认皮肤',
+            price: 0,
+            owned: true
+        },
+        red: {
+            name: '红色皮肤',
+            price: 100,
+            color: 0xff0000
+        },
+        gold: {
+            name: '金色皮肤',
+            price: 200,
+            color: 0xffd700
+        },
+        rainbow: {
+            name: '彩虹皮肤',
+            price: 500,
+            color: 0xff00ff
+        }
+    };
+    
+    Object.entries(shopItems).forEach(([id, item]) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'skin-item';
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = item.name;
+        
         const button = document.createElement('button');
         button.className = 'shop-button';
-
-        if (skin.owned) {
-            if (currentSkin === id) {
-                button.textContent = '使用中';
-                button.disabled = true;
-            } else {
-                button.textContent = '使用';
-                button.onclick = () => equipSkin(id);
-            }
+        
+        if (item.owned) {
+            button.textContent = '已拥有';
+            button.disabled = true;
         } else {
-            button.textContent = `购买 (${skin.price})`;
-            button.onclick = () => purchaseSkin(id);
+            button.textContent = `购买 (${item.price}金币)`;
+            button.onclick = () => purchaseSkin(id, item);
         }
-
-        skinItem.appendChild(skinInfo);
-        skinItem.appendChild(button);
-        skinList.appendChild(skinItem);
-    }
-
-    shopContainer.appendChild(skinList);
-
-    // 创建关闭按钮
-    const closeButton = document.createElement('button');
-    closeButton.id = 'closeShop';
-    closeButton.textContent = '关闭';
-    closeButton.onclick = toggleShop;
-    shopContainer.appendChild(closeButton);
-
-    document.body.appendChild(shopContainer);
-}
-
-function purchaseSkin(skinId) {
-    const skin = shopItems.skins[skinId];
-    if (coins >= skin.price && !skin.owned) {
-        coins -= skin.price;
-        skin.owned = true;
-        updateShopUI();
-        equipSkin(skinId);
-    }
-}
-
-function equipSkin(skinId) {
-    const skin = shopItems.skins[skinId];
-    if (skin.owned) {
-        currentSkin = skinId;
-        updatePlayerAppearance();
-        updateShopUI();
-    }
-}
-
-function updatePlayerAppearance() {
-    const skin = shopItems.skins[currentSkin];
-    const material = new THREE.MeshPhongMaterial({
-        color: skin.color,
-        shininess: 30,
-        metalness: skin.metalness || 0.3,
-        roughness: skin.roughness || 0.7
+        
+        itemDiv.appendChild(nameSpan);
+        itemDiv.appendChild(button);
+        skinList.appendChild(itemDiv);
     });
-    
-    if (skin.emissive) {
-        material.emissive = new THREE.Color(skin.emissive);
-        material.emissiveIntensity = skin.emissiveIntensity || 1;
-    }
-
-    // 更新手臂材质
-    if (leftArm) leftArm.material = material;
-    if (rightArm) rightArm.material = material;
 }
 
-function updateShopUI() {
-    document.getElementById('shopCoins').textContent = `金币: ${coins}`;
-    // 更新按钮状态
-    // ... 更新商店UI的其他部分 ...
+// 购买皮肤
+function purchaseSkin(skinId, item) {
+    if (coinCount >= item.price) {
+        coinCount -= item.price;
+        item.owned = true;
+        updateCoinDisplay();
+        updateShopItems();
+        // 更新玩家外观
+        if (leftArm && rightArm) {
+            const material = new THREE.MeshPhongMaterial({ 
+                color: item.color,
+                shininess: 30
+            });
+            leftArm.material = material;
+            rightArm.material = material;
+        }
+    } else {
+        alert('金币不足！');
+    }
 }
 
 // 修改createStartScreen函数
@@ -1784,4 +1767,28 @@ function onMouseMove(event) {
     
     const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
     camera.position.x = Math.max(-2, Math.min(2, camera.position.x + movementX * 0.005)); // 降低鼠标移动灵敏度
+}
+
+// 添加商店开关功能
+function toggleShop() {
+    const shop = document.getElementById('shop');
+    if (!shop) {
+        createShopUI(); // 如果商店UI不存在，先创建它
+        toggleShop(); // 再次调用以显示商店
+        return;
+    }
+    
+    if (shop.style.display === 'none' || shop.style.display === '') {
+        shop.style.display = 'block';
+        // 暂停游戏
+        if (gameStarted) {
+            document.exitPointerLock();
+        }
+    } else {
+        shop.style.display = 'none';
+        // 如果游戏正在进行，重新锁定指针
+        if (gameStarted) {
+            document.body.requestPointerLock();
+        }
+    }
 } 
